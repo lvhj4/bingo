@@ -491,7 +491,8 @@ function createMemoryCard(fileName, index) {
   image.className = "thumb";
   image.src = toImagePath(fileName);
   image.alt = fileName;
-  image.loading = "lazy";
+  // Ensure memory-grid images load immediately so the loading overlay can be dismissed
+  image.loading = "eager";
 
   image.addEventListener("error", () => {
     image.alt = `加载失败: ${fileName}`;
