@@ -416,3 +416,41 @@ button.secondary {
     width: 100%;
   }
 }
+
+.history-panel h3 {
+  margin: 0 0 8px 0;
+}
+
+.history-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.history-list-wrap {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+}
+
+.history-item {
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-item:hover { background: #fbf7f3; }
+.history-item.selected { background: var(--brand-soft); }
+
+.history-meta { font-size: 0.88rem; color: #5a5a5a; }

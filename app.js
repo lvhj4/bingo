@@ -25,6 +25,11 @@ const shareStatusEl = document.getElementById("shareStatus");
 const flipCountEl = document.getElementById("flipCount");
 const toggleNamesCheckbox = document.getElementById("toggleNames");
 const appRoot = document.querySelector('.app');
+const historyListEl = document.getElementById('historyList');
+const historyInfoEl = document.getElementById('historyInfo');
+const revealAllBtn = document.getElementById('revealAllBtn');
+const restoreHistoryBtn = document.getElementById('restoreHistoryBtn');
+const openSharedHistoryBtn = document.getElementById('openSharedHistoryBtn');
 
 const IMAGE_DIR = "图片";
 let imageNames = [];
@@ -44,6 +49,8 @@ let isSharedView = false;
 let sharedPage = null;
 let memoryLoading = false;
 const loadingOverlay = document.getElementById('loadingOverlay');
+const HISTORY_KEY = 'bingo_history_v1';
+let currentSelectedHistoryId = null;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -56,6 +63,8 @@ function setMemoryStatus(message, isError = false) {
 }
 
 function setShareStatus(message, isError = false) {
+  // 不在分享视图中显示任何分享相关信息
+  if (typeof isSharedView !== 'undefined' && isSharedView) return;
   shareStatusEl.textContent = message;
   shareStatusEl.style.color = isError ? "#c73811" : "#0f6a5d";
 }
@@ -571,6 +580,11 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
     img.addEventListener('load', onEnd);
     img.addEventListener('error', onEnd);
 
+    // If image already loaded from cache, the load event may have fired before listeners attached
+    if (img.complete) {
+      setTimeout(onEnd, 0);
+    }
+
     fragment.append(card);
   });
 
@@ -658,6 +672,25 @@ function loadStateFromQuery() {
       throw new Error("行列参数无效");
     }
 
+    // 锁定为分享视图，禁用生成与页面切换（先置标志以避免在构建时显示分享提示）
+    isSharedView = true;
+    sharedPage = state.page;
+    try {
+      buildGridBtn.disabled = true;
+      buildMemoryGridBtn.disabled = true;
+      rowsInput.disabled = true;
+      colsInput.disabled = true;
+      memoryRowsInput.disabled = true;
+      memoryColsInput.disabled = true;
+      toBuilderPageBtn.disabled = true;
+      toMemoryPageBtn.disabled = true;
+      // 分享页面直接隐藏生成按钮
+      try { buildGridBtn.style.display = 'none'; } catch (e) {}
+      try { buildMemoryGridBtn.style.display = 'none'; } catch (e) {}
+    } catch (e) {
+      // ignore if elements missing
+    }
+
     if (state.page === "memory") {
       memoryRowsInput.value = String(rows);
       memoryColsInput.value = String(cols);
@@ -671,29 +704,6 @@ function loadStateFromQuery() {
     }
 
     shareLinkInput.value = window.location.href;
-    setShareStatus("已根据分享链接恢复本局。", false);
-    // 锁定为分享视图，禁用生成与页面切换
-    isSharedView = true;
-    sharedPage = state.page;
-    try {
-      buildGridBtn.disabled = true;
-      buildMemoryGridBtn.disabled = true;
-      rowsInput.disabled = true;
-      colsInput.disabled = true;
-      memoryRowsInput.disabled = true;
-      memoryColsInput.disabled = true;
-      toBuilderPageBtn.disabled = true;
-      toMemoryPageBtn.disabled = true;
-      // 分享页面直接隐藏生成按钮
-      try {
-        buildGridBtn.style.display = 'none';
-      } catch (e) {}
-      try {
-        buildMemoryGridBtn.style.display = 'none';
-      } catch (e) {}
-    } catch (e) {
-      // ignore if elements missing
-    }
   } catch (error) {
     setShareStatus("分享链接解析失败，请重新生成。", true);
   }
