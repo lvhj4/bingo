@@ -18,18 +18,12 @@ const memoryColsInput = document.getElementById("memoryCols");
 const buildMemoryGridBtn = document.getElementById("buildMemoryGridBtn");
 const memoryGrid = document.getElementById("memoryGrid");
 const memoryStatusEl = document.getElementById("memoryStatus");
-const shareLinkInput = document.getElementById("shareLinkInput");
-const makeShareLinkBtn = document.getElementById("makeShareLinkBtn");
-const copyShareLinkBtn = document.getElementById("copyShareLinkBtn");
-const shareStatusEl = document.getElementById("shareStatus");
 const flipCountEl = document.getElementById("flipCount");
 const toggleNamesCheckbox = document.getElementById("toggleNames");
 const appRoot = document.querySelector('.app');
-const historyListEl = document.getElementById('historyList');
-const historyInfoEl = document.getElementById('historyInfo');
-const revealAllBtn = document.getElementById('revealAllBtn');
-const restoreHistoryBtn = document.getElementById('restoreHistoryBtn');
-const openSharedHistoryBtn = document.getElementById('openSharedHistoryBtn');
+const generationBadge = document.getElementById("generationBadge");
+const generationTimeExact = document.getElementById("generationTimeExact");
+const generationTimeRelative = document.getElementById("generationTimeRelative");
 
 const IMAGE_DIR = "图片";
 let imageNames = [];
@@ -43,17 +37,13 @@ let memoryMatchedCount = 0;
 let memoryTotalCards = 0;
 let memoryResetTimer = null;
 let memoryFlipCount = 0;
-let lastBuilderDeck = [];
-let lastMemoryDeck = [];
-let isSharedView = false;
-let sharedPage = null;
 let memoryLoading = false;
 const loadingOverlay = document.getElementById('loadingOverlay');
 const loadingCloseBtn = document.getElementById('loadingCloseBtn');
 const LOADING_TIMEOUT_MS = 10000; // 超时（毫秒），到时自动关闭遮罩
 let loadingTimeout = null;
-const HISTORY_KEY = 'bingo_history_v1';
-let currentSelectedHistoryId = null;
+let lastGeneratedAt = null;
+let generationBadgeTimer = null;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -82,71 +72,61 @@ function hideLoadingOverlay() {
   loadingOverlay.style.display = "none";
 }
 
-function setShareStatus(message, isError = false) {
-  // 不在分享视图中显示任何分享相关信息
-  if (typeof isSharedView !== 'undefined' && isSharedView) return;
-  shareStatusEl.textContent = message;
-  shareStatusEl.style.color = isError ? "#c73811" : "#0f6a5d";
+function formatGenerationTime(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const millis = String(date.getMilliseconds()).padStart(3, "0");
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}.${millis}`;
 }
 
-function encodeShareState(state) {
-  return btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-}
-
-function decodeShareState(value) {
-  return JSON.parse(decodeURIComponent(escape(atob(value))));
-}
-
-function getSharedProgressKey() {
-  if (!isSharedView || sharedPage !== "memory") {
-    return null;
+function formatRelativeGenerationTime(date) {
+  const diff = Date.now() - date.getTime();
+  if (diff < 1000) {
+    return "刚刚生成";
   }
 
-  try {
-    const stateValue = new URL(window.location.href).searchParams.get("state");
-    return stateValue ? `bingo_shared_progress_${stateValue}` : null;
-  } catch (error) {
-    return null;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) {
+    return `${seconds} 秒前`;
   }
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} 分钟前`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} 小时前`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `${days} 天前`;
 }
 
-function loadSharedProgress() {
-  const key = getSharedProgressKey();
-  if (!key) {
-    return { flipCount: 0 };
-  }
-
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) {
-      return { flipCount: 0 };
-    }
-
-    const parsed = JSON.parse(raw);
-    return {
-      flipCount: Number(parsed.flipCount) || 0,
-    };
-  } catch (error) {
-    return { flipCount: 0 };
-  }
-}
-
-function saveSharedProgress() {
-  const key = getSharedProgressKey();
-  if (!key) {
+function updateGenerationBadge() {
+  if (!generationBadge || !generationTimeExact || !generationTimeRelative || !lastGeneratedAt) {
     return;
   }
 
-  try {
-    localStorage.setItem(
-      key,
-      JSON.stringify({
-        flipCount: memoryFlipCount,
-      })
-    );
-  } catch (error) {
-    // ignore storage failures
+  generationBadge.hidden = false;
+  generationTimeExact.textContent = `生成时间 ${formatGenerationTime(lastGeneratedAt)}`;
+  generationTimeRelative.textContent = formatRelativeGenerationTime(lastGeneratedAt);
+}
+
+function markGeneratedNow() {
+  lastGeneratedAt = new Date();
+  updateGenerationBadge();
+
+  if (generationBadgeTimer) {
+    clearInterval(generationBadgeTimer);
   }
+
+  generationBadgeTimer = setInterval(updateGenerationBadge, 1000);
 }
 
 function updateFlipCountText() {
@@ -338,7 +318,7 @@ function createCell(fileName, index) {
 function buildBuilderGridWithDeck(rows, cols, deck) {
   const total = rows * cols;
   if (!Array.isArray(deck) || deck.length !== total) {
-    setStatus("分享数据无效：宫格数据长度不匹配。", true);
+    setStatus("宫格数据长度不匹配。", true);
     return;
   }
 
@@ -354,26 +334,12 @@ function buildBuilderGridWithDeck(rows, cols, deck) {
   });
 
   grid.append(fragment);
-  lastBuilderDeck = [...deck];
   lastLineSuccess = false;
   setStatus(`宫格已生成：${rows} x ${cols}（共 ${total} 格）。${getLineHintText()}`);
-  // 自动生成并填写分享链接（恢复到当前 builder 状态）
-  try {
-    const state = { page: "builder", rows: currentRows, cols: currentCols, deck: lastBuilderDeck };
-    const url = new URL(window.location.href);
-    url.searchParams.set("state", encodeShareState(state));
-    shareLinkInput.value = url.toString();
-    setShareStatus("已为当前宫格自动生成分享链接。可复制发送给他人。", false);
-  } catch (e) {
-    // ignore
-  }
+  markGeneratedNow();
 }
 
 function buildGrid() {
-  if (isSharedView) {
-    setStatus("此页面来自分享链接，当前视图已锁定，无法重新生成。", true);
-    return;
-  }
   const rows = Number(rowsInput.value);
   const cols = Number(colsInput.value);
 
@@ -447,16 +413,6 @@ function clearHighlight() {
 function showPage(target) {
   const showBuilder = target === "builder";
 
-  // 在分享视图下阻止切换到非分享页面
-  if (isSharedView && target !== sharedPage) {
-    if (sharedPage === "builder") {
-      setShareStatus("此链接仅展示生成时的宫格（生成页），页面已锁定。", true);
-    } else if (sharedPage === "memory") {
-      setShareStatus("此链接仅展示生成时的翻牌页，页面已锁定。", true);
-    }
-    return;
-  }
-
   builderPage.classList.toggle("active", showBuilder);
   memoryPage.classList.toggle("active", !showBuilder);
   builderPage.hidden = !showBuilder;
@@ -509,14 +465,15 @@ function handleMemoryCardClick(card) {
   card.classList.add("flipped");
   memoryOpenedCards.push(card);
 
+  // 点击本轮第一张牌时就计为一次翻牌
+  if (memoryOpenedCards.length === 1) {
+    memoryFlipCount += 1;
+    updateFlipCountText();
+  }
+
   if (memoryOpenedCards.length < 2) {
     return;
   }
-
-  // 两张牌已被翻开，计为一次翻牌
-  memoryFlipCount += 1;
-  updateFlipCountText();
-  saveSharedProgress();
 
   const [first, second] = memoryOpenedCards;
   const matched = first.dataset.name === second.dataset.name;
@@ -593,10 +550,6 @@ function createMemoryCard(fileName, index) {
 }
 
 function buildMemoryGrid() {
-  if (isSharedView) {
-    setMemoryStatus("此页面来自分享链接，当前视图已锁定，无法重新生成。", true);
-    return;
-  }
   const rows = Number(memoryRowsInput.value);
   const cols = Number(memoryColsInput.value);
 
@@ -626,7 +579,7 @@ function buildMemoryGrid() {
 function buildMemoryGridWithDeck(rows, cols, deck) {
   const total = rows * cols;
   if (!Array.isArray(deck) || deck.length !== total) {
-    setMemoryStatus("分享数据无效：翻牌宫格数据长度不匹配。", true);
+    setMemoryStatus("翻牌宫格数据长度不匹配。", true);
     return;
   }
   // 准备渲染并等待所有图片 load/error 完成
@@ -690,129 +643,14 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   });
 
   memoryGrid.append(fragment);
-  lastMemoryDeck = [...deck];
   memoryLock = false;
   memoryOpenedCards = [];
   memoryMatchedCount = 0;
   memoryTotalCards = total;
   memoryFlipCount = 0;
-
-  if (isSharedView && sharedPage === "memory") {
-    memoryFlipCount = loadSharedProgress().flipCount;
-  }
-
   updateFlipCountText();
   setMemoryStatus(`正在加载图片：${rows} x ${cols}（共 ${total} 格），请稍候…`);
-  // 自动生成并填写分享链接（恢复到当前 memory 状态，只展示翻牌页）
-  try {
-    const state = { page: "memory", rows, cols, deck: lastMemoryDeck };
-    const url = new URL(window.location.href);
-    url.searchParams.set("state", encodeShareState(state));
-    shareLinkInput.value = url.toString();
-    setShareStatus("已为本局自动生成分享链接（仅恢复翻牌页面）。可复制发送给他人。", false);
-  } catch (e) {
-    // ignore
-  }
-}
-
-function makeShareLink() {
-  let state = null;
-
-  if (!builderPage.hidden && lastBuilderDeck.length) {
-    state = {
-      page: "builder",
-      rows: currentRows,
-      cols: currentCols,
-      deck: lastBuilderDeck,
-    };
-  }
-
-  if (!memoryPage.hidden && lastMemoryDeck.length) {
-    state = {
-      page: "memory",
-      rows: Number(memoryRowsInput.value),
-      cols: Number(memoryColsInput.value),
-      deck: lastMemoryDeck,
-    };
-  }
-
-  if (!state) {
-    setShareStatus("请先在当前页面生成宫格后再创建分享链接。", true);
-    return;
-  }
-
-  const url = new URL(window.location.href);
-  url.searchParams.set("state", encodeShareState(state));
-  shareLinkInput.value = url.toString();
-  setShareStatus("分享链接已生成，可直接发送给他人。", false);
-}
-
-async function copyShareLink() {
-  const text = shareLinkInput.value.trim();
-  if (!text) {
-    setShareStatus("没有可复制的链接，请先生成分享链接。", true);
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(text);
-    setShareStatus("分享链接已复制。", false);
-  } catch (error) {
-    setShareStatus("复制失败，请手动长按输入框复制。", true);
-  }
-}
-
-function loadStateFromQuery() {
-  const url = new URL(window.location.href);
-  const encoded = url.searchParams.get("state");
-  if (!encoded) {
-    return;
-  }
-
-  try {
-    const state = decodeShareState(encoded);
-    const rows = Number(state.rows);
-    const cols = Number(state.cols);
-
-    if (!Number.isInteger(rows) || !Number.isInteger(cols) || rows < 1 || cols < 1) {
-      throw new Error("行列参数无效");
-    }
-
-    // 锁定为分享视图，禁用生成与页面切换（先置标志以避免在构建时显示分享提示）
-    isSharedView = true;
-    sharedPage = state.page;
-    try {
-      buildGridBtn.disabled = true;
-      buildMemoryGridBtn.disabled = true;
-      rowsInput.disabled = true;
-      colsInput.disabled = true;
-      memoryRowsInput.disabled = true;
-      memoryColsInput.disabled = true;
-      toBuilderPageBtn.disabled = true;
-      toMemoryPageBtn.disabled = true;
-      // 分享页面直接隐藏生成按钮
-      try { buildGridBtn.style.display = 'none'; } catch (e) {}
-      try { buildMemoryGridBtn.style.display = 'none'; } catch (e) {}
-    } catch (e) {
-      // ignore if elements missing
-    }
-
-    if (state.page === "memory") {
-      memoryRowsInput.value = String(rows);
-      memoryColsInput.value = String(cols);
-      showPage("memory");
-      buildMemoryGridWithDeck(rows, cols, state.deck);
-    } else {
-      rowsInput.value = String(rows);
-      colsInput.value = String(cols);
-      showPage("builder");
-      buildBuilderGridWithDeck(rows, cols, state.deck);
-    }
-
-    shareLinkInput.value = window.location.href;
-  } catch (error) {
-    setShareStatus("分享链接解析失败，请重新生成。", true);
-  }
+  markGeneratedNow();
 }
 
 async function init() {
@@ -832,7 +670,6 @@ async function init() {
     setStatus(`图片清单加载成功：${imageNames.length} 张。`);
     buildGrid();
     updateFlipCountText();
-    loadStateFromQuery();
     // 名称显示开关，默认关闭（隐藏名称）
     try {
       if (toggleNamesCheckbox) {
@@ -883,8 +720,6 @@ clearHighlightBtn.addEventListener("click", clearHighlight);
 toBuilderPageBtn.addEventListener("click", () => showPage("builder"));
 toMemoryPageBtn.addEventListener("click", () => showPage("memory"));
 buildMemoryGridBtn.addEventListener("click", buildMemoryGrid);
-makeShareLinkBtn.addEventListener("click", makeShareLink);
-copyShareLinkBtn.addEventListener("click", copyShareLink);
 
 nameInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
