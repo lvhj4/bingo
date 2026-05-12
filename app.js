@@ -65,6 +65,23 @@ function setMemoryStatus(message, isError = false) {
   memoryStatusEl.style.color = isError ? "#c73811" : "#0f6a5d";
 }
 
+function showLoadingOverlay() {
+  if (!loadingOverlay) return;
+  loadingOverlay.hidden = false;
+  loadingOverlay.style.display = "grid";
+}
+
+function hideLoadingOverlay() {
+  if (loadingTimeout) {
+    clearTimeout(loadingTimeout);
+    loadingTimeout = null;
+  }
+  memoryLoading = false;
+  if (!loadingOverlay) return;
+  loadingOverlay.hidden = true;
+  loadingOverlay.style.display = "none";
+}
+
 function setShareStatus(message, isError = false) {
   // 不在分享视图中显示任何分享相关信息
   if (typeof isSharedView !== 'undefined' && isSharedView) return;
@@ -395,6 +412,10 @@ function showPage(target) {
 
   toBuilderPageBtn.classList.toggle("active", showBuilder);
   toMemoryPageBtn.classList.toggle("active", !showBuilder);
+
+  if (showBuilder) {
+    hideLoadingOverlay();
+  }
 }
 
 function getMemoryDeck(total) {
@@ -563,13 +584,12 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   // 用于统计图片加载完成数量
   let toLoad = deck.length;
   memoryLoading = true;
-  if (loadingOverlay) loadingOverlay.hidden = false;
+  showLoadingOverlay();
   // 启动超时保底，防止 lazy loading 或网络问题导致遮罩长期存在
   if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null; }
   loadingTimeout = setTimeout(() => {
     loadingTimeout = null;
-    memoryLoading = false;
-    if (loadingOverlay) loadingOverlay.hidden = true;
+    hideLoadingOverlay();
     setMemoryStatus('图片加载超时，已自动解除遮罩。');
   }, LOADING_TIMEOUT_MS);
 
@@ -583,8 +603,7 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
         img.removeEventListener('error', onEnd);
         toLoad -= 1;
         if (toLoad <= 0) {
-          memoryLoading = false;
-          if (loadingOverlay) loadingOverlay.hidden = true;
+          hideLoadingOverlay();
           setMemoryStatus(`图片已加载完毕。${rows} x ${cols}（共 ${total} 格）。`);
         }
       };
@@ -774,12 +793,24 @@ async function init() {
     try {
       if (loadingCloseBtn) {
         loadingCloseBtn.addEventListener('click', () => {
-          if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null; }
-          memoryLoading = false;
-          if (loadingOverlay) loadingOverlay.hidden = true;
+          hideLoadingOverlay();
           setMemoryStatus('已手动关闭加载遮罩（可能部分图片未加载完成）。');
         });
       }
+      if (loadingOverlay) {
+        loadingOverlay.addEventListener('click', (event) => {
+          if (event.target === loadingOverlay) {
+            hideLoadingOverlay();
+            setMemoryStatus('已手动关闭加载（点击背景关闭）。');
+          }
+        });
+      }
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && memoryLoading) {
+          hideLoadingOverlay();
+          setMemoryStatus('已手动关闭加载（Esc）。');
+        }
+      });
     } catch (e) {
       // ignore
     }
