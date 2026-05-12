@@ -49,6 +49,9 @@ let isSharedView = false;
 let sharedPage = null;
 let memoryLoading = false;
 const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingCloseBtn = document.getElementById('loadingCloseBtn');
+const LOADING_TIMEOUT_MS = 10000; // 超时（毫秒），到时自动关闭遮罩
+let loadingTimeout = null;
 const HISTORY_KEY = 'bingo_history_v1';
 let currentSelectedHistoryId = null;
 
@@ -562,22 +565,29 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   let toLoad = deck.length;
   memoryLoading = true;
   if (loadingOverlay) loadingOverlay.hidden = false;
+  // 启动超时保底，防止 lazy loading 或网络问题导致遮罩长期存在
+  if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null; }
+  loadingTimeout = setTimeout(() => {
+    loadingTimeout = null;
+    memoryLoading = false;
+    if (loadingOverlay) loadingOverlay.hidden = true;
+    setMemoryStatus('图片加载超时，已自动解除遮罩。');
+  }, LOADING_TIMEOUT_MS);
 
   deck.forEach((name, index) => {
     const card = createMemoryCard(name, index);
     // 监控图片加载
     const img = card.querySelector('img.thumb');
-    const onEnd = () => {
-      toLoad -= 1;
-      if (toLoad <= 0) {
-        // 全部图片已处理（加载或错误）
-        memoryLoading = false;
-        if (loadingOverlay) loadingOverlay.hidden = true;
-        setMemoryStatus(`图片已加载完毕。${rows} x ${cols}（共 ${total} 格）。`);
-      }
-      img.removeEventListener('load', onEnd);
-      img.removeEventListener('error', onEnd);
-    };
+      const onEnd = () => {
+        img.removeEventListener('load', onEnd);
+        img.removeEventListener('error', onEnd);
+        toLoad -= 1;
+        if (toLoad <= 0) {
+          memoryLoading = false;
+          if (loadingOverlay) loadingOverlay.hidden = true;
+          setMemoryStatus(`图片已加载完毕。${rows} x ${cols}（共 ${total} 格）。`);
+        }
+      };
     img.addEventListener('load', onEnd);
     img.addEventListener('error', onEnd);
 
@@ -738,6 +748,19 @@ async function init() {
       } else {
         // ensure hidden by default
         applyNameToggle(false);
+      }
+    } catch (e) {
+      // ignore
+    }
+    // 绑定 loading overlay 的手动关闭按钮
+    try {
+      if (loadingCloseBtn) {
+        loadingCloseBtn.addEventListener('click', () => {
+          if (loadingTimeout) { clearTimeout(loadingTimeout); loadingTimeout = null; }
+          memoryLoading = false;
+          if (loadingOverlay) loadingOverlay.hidden = true;
+          setMemoryStatus('已手动关闭加载遮罩（可能部分图片未加载完成）。');
+        });
       }
     } catch (e) {
       // ignore
