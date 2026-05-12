@@ -23,6 +23,8 @@ const makeShareLinkBtn = document.getElementById("makeShareLinkBtn");
 const copyShareLinkBtn = document.getElementById("copyShareLinkBtn");
 const shareStatusEl = document.getElementById("shareStatus");
 const flipCountEl = document.getElementById("flipCount");
+const toggleNamesCheckbox = document.getElementById("toggleNames");
+const appRoot = document.querySelector('.app');
 
 const IMAGE_DIR = "图片";
 let imageNames = [];
@@ -35,6 +37,11 @@ let memoryOpenedCards = [];
 let memoryMatchedCount = 0;
 let memoryTotalCards = 0;
 let memoryResetTimer = null;
+let memoryFlipCount = 0;
+let lastBuilderDeck = [];
+let lastMemoryDeck = [];
+let isSharedView = false;
+let sharedPage = null;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -63,8 +70,22 @@ function updateFlipCountText() {
   flipCountEl.textContent = String(memoryFlipCount);
 }
 
+function applyNameToggle(checked) {
+  if (!appRoot) return;
+  if (checked) {
+    appRoot.classList.remove('hide-names');
+  } else {
+    appRoot.classList.add('hide-names');
+  }
+}
+
 function toImagePath(fileName) {
-  return `${IMAGE_DIR}/${encodeURIComponent(fileName)}`;
+  try {
+    const name = typeof fileName === "string" && fileName.normalize ? fileName.normalize("NFC") : fileName;
+    return `${IMAGE_DIR}/${encodeURIComponent(name)}`;
+  } catch (e) {
+    return `${IMAGE_DIR}/${encodeURIComponent(fileName)}`;
+  }
 }
 
 function normalizeName(name) {
@@ -253,9 +274,23 @@ function buildBuilderGridWithDeck(rows, cols, deck) {
   lastBuilderDeck = [...deck];
   lastLineSuccess = false;
   setStatus(`宫格已生成：${rows} x ${cols}（共 ${total} 格）。${getLineHintText()}`);
+  // 自动生成并填写分享链接（恢复到当前 builder 状态）
+  try {
+    const state = { page: "builder", rows: currentRows, cols: currentCols, deck: lastBuilderDeck };
+    const url = new URL(window.location.href);
+    url.searchParams.set("state", encodeShareState(state));
+    shareLinkInput.value = url.toString();
+    setShareStatus("已为当前宫格自动生成分享链接。可复制发送给他人。", false);
+  } catch (e) {
+    // ignore
+  }
 }
 
 function buildGrid() {
+  if (isSharedView) {
+    setStatus("此页面来自分享链接，当前视图已锁定，无法重新生成。", true);
+    return;
+  }
   const rows = Number(rowsInput.value);
   const cols = Number(colsInput.value);
 
@@ -329,6 +364,16 @@ function clearHighlight() {
 function showPage(target) {
   const showBuilder = target === "builder";
 
+  // 在分享视图下阻止切换到非分享页面
+  if (isSharedView && target !== sharedPage) {
+    if (sharedPage === "builder") {
+      setShareStatus("此链接仅展示生成时的宫格（生成页），页面已锁定。", true);
+    } else if (sharedPage === "memory") {
+      setShareStatus("此链接仅展示生成时的翻牌页，页面已锁定。", true);
+    }
+    return;
+  }
+
   builderPage.classList.toggle("active", showBuilder);
   memoryPage.classList.toggle("active", !showBuilder);
   builderPage.hidden = !showBuilder;
@@ -372,13 +417,15 @@ function handleMemoryCardClick(card) {
   }
 
   card.classList.add("flipped");
-  memoryFlipCount += 1;
-  updateFlipCountText();
   memoryOpenedCards.push(card);
 
   if (memoryOpenedCards.length < 2) {
     return;
   }
+
+  // 两张牌已被翻开，计为一次翻牌
+  memoryFlipCount += 1;
+  updateFlipCountText();
 
   const [first, second] = memoryOpenedCards;
   const matched = first.dataset.name === second.dataset.name;
@@ -455,6 +502,10 @@ function createMemoryCard(fileName, index) {
 }
 
 function buildMemoryGrid() {
+  if (isSharedView) {
+    setMemoryStatus("此页面来自分享链接，当前视图已锁定，无法重新生成。", true);
+    return;
+  }
   const rows = Number(memoryRowsInput.value);
   const cols = Number(memoryColsInput.value);
 
@@ -505,6 +556,16 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   memoryFlipCount = 0;
   updateFlipCountText();
   setMemoryStatus(`翻牌宫格已生成：${rows} x ${cols}（共 ${total} 格，${total / 2} 对）。`);
+  // 自动生成并填写分享链接（恢复到当前 memory 状态，只展示翻牌页）
+  try {
+    const state = { page: "memory", rows, cols, deck: lastMemoryDeck };
+    const url = new URL(window.location.href);
+    url.searchParams.set("state", encodeShareState(state));
+    shareLinkInput.value = url.toString();
+    setShareStatus("已为本局自动生成分享链接（仅恢复翻牌页面）。可复制发送给他人。", false);
+  } catch (e) {
+    // ignore
+  }
 }
 
 function makeShareLink() {
@@ -584,6 +645,28 @@ function loadStateFromQuery() {
 
     shareLinkInput.value = window.location.href;
     setShareStatus("已根据分享链接恢复本局。", false);
+    // 锁定为分享视图，禁用生成与页面切换
+    isSharedView = true;
+    sharedPage = state.page;
+    try {
+      buildGridBtn.disabled = true;
+      buildMemoryGridBtn.disabled = true;
+      rowsInput.disabled = true;
+      colsInput.disabled = true;
+      memoryRowsInput.disabled = true;
+      memoryColsInput.disabled = true;
+      toBuilderPageBtn.disabled = true;
+      toMemoryPageBtn.disabled = true;
+      // 分享页面直接隐藏生成按钮
+      try {
+        buildGridBtn.style.display = 'none';
+      } catch (e) {}
+      try {
+        buildMemoryGridBtn.style.display = 'none';
+      } catch (e) {}
+    } catch (e) {
+      // ignore if elements missing
+    }
   } catch (error) {
     setShareStatus("分享链接解析失败，请重新生成。", true);
   }
@@ -607,6 +690,20 @@ async function init() {
     buildGrid();
     updateFlipCountText();
     loadStateFromQuery();
+    // 名称显示开关，默认关闭（隐藏名称）
+    try {
+      if (toggleNamesCheckbox) {
+        // 默认 unchecked -> 隐藏名称
+        toggleNamesCheckbox.checked = false;
+        toggleNamesCheckbox.addEventListener('change', (e) => applyNameToggle(e.target.checked));
+        applyNameToggle(toggleNamesCheckbox.checked);
+      } else {
+        // ensure hidden by default
+        applyNameToggle(false);
+      }
+    } catch (e) {
+      // ignore
+    }
   } catch (error) {
     setStatus(`加载图片清单失败：${error.message}。请确认 images-list.js 存在。`, true);
   }

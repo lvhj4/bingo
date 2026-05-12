@@ -36,6 +36,20 @@ body {
   margin-bottom: 14px;
 }
 
+.global-controls {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.toggle-label {
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .tab-btn {
   background: #6b7c8e;
 }
@@ -237,6 +251,11 @@ button.secondary {
   font-size: 0.88rem;
   line-height: 1.2;
   word-break: break-all;
+}
+
+/* Hide names when app has the hide-names class */
+.app.hide-names .name {
+  display: none !important;
 }
 
 .memory-grid {
