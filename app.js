@@ -42,6 +42,8 @@ let lastBuilderDeck = [];
 let lastMemoryDeck = [];
 let isSharedView = false;
 let sharedPage = null;
+let memoryLoading = false;
+const loadingOverlay = document.getElementById('loadingOverlay');
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -412,7 +414,10 @@ function updateMemoryProgressText(extra = "") {
 }
 
 function handleMemoryCardClick(card) {
-  if (memoryLock || card.classList.contains("flipped") || card.classList.contains("matched")) {
+  if (memoryLoading || memoryLock || card.classList.contains("flipped") || card.classList.contains("matched")) {
+    if (memoryLoading) {
+      setMemoryStatus('图片仍在加载，请等待加载完成后再翻牌。');
+    }
     return;
   }
 
@@ -538,13 +543,35 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
     setMemoryStatus("分享数据无效：翻牌宫格数据长度不匹配。", true);
     return;
   }
-
+  // 准备渲染并等待所有图片 load/error 完成
   memoryGrid.innerHTML = "";
   memoryGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
 
   const fragment = document.createDocumentFragment();
+  // 用于统计图片加载完成数量
+  let toLoad = deck.length;
+  memoryLoading = true;
+  if (loadingOverlay) loadingOverlay.hidden = false;
+
   deck.forEach((name, index) => {
-    fragment.append(createMemoryCard(name, index));
+    const card = createMemoryCard(name, index);
+    // 监控图片加载
+    const img = card.querySelector('img.thumb');
+    const onEnd = () => {
+      toLoad -= 1;
+      if (toLoad <= 0) {
+        // 全部图片已处理（加载或错误）
+        memoryLoading = false;
+        if (loadingOverlay) loadingOverlay.hidden = true;
+        setMemoryStatus(`图片已加载完毕。${rows} x ${cols}（共 ${total} 格）。`);
+      }
+      img.removeEventListener('load', onEnd);
+      img.removeEventListener('error', onEnd);
+    };
+    img.addEventListener('load', onEnd);
+    img.addEventListener('error', onEnd);
+
+    fragment.append(card);
   });
 
   memoryGrid.append(fragment);
@@ -555,7 +582,7 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   memoryTotalCards = total;
   memoryFlipCount = 0;
   updateFlipCountText();
-  setMemoryStatus(`翻牌宫格已生成：${rows} x ${cols}（共 ${total} 格，${total / 2} 对）。`);
+  setMemoryStatus(`正在加载图片：${rows} x ${cols}（共 ${total} 格），请稍候…`);
   // 自动生成并填写分享链接（恢复到当前 memory 状态，只展示翻牌页）
   try {
     const state = { page: "memory", rows, cols, deck: lastMemoryDeck };
