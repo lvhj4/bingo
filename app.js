@@ -97,6 +97,58 @@ function decodeShareState(value) {
   return JSON.parse(decodeURIComponent(escape(atob(value))));
 }
 
+function getSharedProgressKey() {
+  if (!isSharedView || sharedPage !== "memory") {
+    return null;
+  }
+
+  try {
+    const stateValue = new URL(window.location.href).searchParams.get("state");
+    return stateValue ? `bingo_shared_progress_${stateValue}` : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function loadSharedProgress() {
+  const key = getSharedProgressKey();
+  if (!key) {
+    return { flipCount: 0 };
+  }
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      return { flipCount: 0 };
+    }
+
+    const parsed = JSON.parse(raw);
+    return {
+      flipCount: Number(parsed.flipCount) || 0,
+    };
+  } catch (error) {
+    return { flipCount: 0 };
+  }
+}
+
+function saveSharedProgress() {
+  const key = getSharedProgressKey();
+  if (!key) {
+    return;
+  }
+
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        flipCount: memoryFlipCount,
+      })
+    );
+  } catch (error) {
+    // ignore storage failures
+  }
+}
+
 function updateFlipCountText() {
   flipCountEl.textContent = String(memoryFlipCount);
 }
@@ -464,6 +516,7 @@ function handleMemoryCardClick(card) {
   // 两张牌已被翻开，计为一次翻牌
   memoryFlipCount += 1;
   updateFlipCountText();
+  saveSharedProgress();
 
   const [first, second] = memoryOpenedCards;
   const matched = first.dataset.name === second.dataset.name;
@@ -643,6 +696,11 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   memoryMatchedCount = 0;
   memoryTotalCards = total;
   memoryFlipCount = 0;
+
+  if (isSharedView && sharedPage === "memory") {
+    memoryFlipCount = loadSharedProgress().flipCount;
+  }
+
   updateFlipCountText();
   setMemoryStatus(`正在加载图片：${rows} x ${cols}（共 ${total} 格），请稍候…`);
   // 自动生成并填写分享链接（恢复到当前 memory 状态，只展示翻牌页）
