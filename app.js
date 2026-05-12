@@ -492,10 +492,9 @@ function createMemoryCard(fileName, index) {
 
   const image = document.createElement("img");
   image.className = "thumb";
-  image.src = toImagePath(fileName);
+  // 不直接将 src 赋值，改为 data-src 并由外部负责预加载（fetch 或回退赋 src）
+  image.dataset.src = toImagePath(fileName);
   image.alt = fileName;
-  // Ensure memory-grid images load immediately so the loading overlay can be dismissed
-  image.loading = "eager";
 
   image.addEventListener("error", () => {
     image.alt = `加载失败: ${fileName}`;
@@ -575,9 +574,10 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
   }, LOADING_TIMEOUT_MS);
 
   deck.forEach((name, index) => {
-    const card = createMemoryCard(name, index);
-    // 监控图片加载
-    const img = card.querySelector('img.thumb');
+      const card = createMemoryCard(name, index);
+      const img = card.querySelector('img.thumb');
+
+      // attach handlers first
       const onEnd = () => {
         img.removeEventListener('load', onEnd);
         img.removeEventListener('error', onEnd);
@@ -588,15 +588,33 @@ function buildMemoryGridWithDeck(rows, cols, deck) {
           setMemoryStatus(`图片已加载完毕。${rows} x ${cols}（共 ${total} 格）。`);
         }
       };
-    img.addEventListener('load', onEnd);
-    img.addEventListener('error', onEnd);
+      img.addEventListener('load', onEnd);
+      img.addEventListener('error', onEnd);
 
-    // If image already loaded from cache, the load event may have fired before listeners attached
-    if (img.complete) {
-      setTimeout(onEnd, 0);
-    }
+      // 尝试使用 fetch 预加载图片（能触发即时完成），失败则回退到直接赋 src
+      (async () => {
+        const srcUrl = img.dataset.src;
+        if (!srcUrl) {
+          setTimeout(onEnd, 0);
+          return;
+        }
 
-    fragment.append(card);
+        try {
+          const resp = await fetch(srcUrl, { mode: 'cors' });
+          if (!resp.ok) throw new Error('fetch failed');
+          const blob = await resp.blob();
+          const obj = URL.createObjectURL(blob);
+          img.src = obj;
+        } catch (e) {
+          // 回退：直接把 src 赋值，让浏览器尝试加载（可能在 file:// 下也起作用）
+          img.src = img.dataset.src;
+        } finally {
+          // 如果浏览器已缓存且 img.complete 为 true，确保 onEnd 被触发
+          if (img.complete) setTimeout(onEnd, 0);
+        }
+      })();
+
+      fragment.append(card);
   });
 
   memoryGrid.append(fragment);
