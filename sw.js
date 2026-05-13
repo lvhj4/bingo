@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bingo-images-v1';
+const CACHE_NAME = 'bingo-images-v2';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -25,21 +25,20 @@ self.addEventListener('fetch', (event) => {
 
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
-      // Try cache first
       const cached = await cache.match(req);
+      if (cached) {
+        return cached;
+      }
 
-      // Always try network in background to update cache
-      fetch(req).then((networkResp) => {
-        try {
-          if (networkResp && networkResp.ok) {
-            cache.put(req, networkResp.clone()).catch(() => {});
-          }
-        } catch (e) {
-          // ignore cache put errors for opaque responses
+      const networkResp = await fetch(req);
+      try {
+        if (networkResp && networkResp.ok) {
+          cache.put(req, networkResp.clone()).catch(() => {});
         }
-      }).catch(() => {});
-
-      return cached || fetch(req);
+      } catch (e) {
+        // ignore cache put errors
+      }
+      return networkResp;
     })());
   } catch (e) {
     // ignore

@@ -330,6 +330,11 @@ button.secondary {
   z-index: 1200;
 }
 
+.loading-overlay[hidden] {
+  display: none !important;
+  pointer-events: none;
+}
+
 .loading-box {
   display: flex;
   align-items: center;
