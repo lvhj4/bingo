@@ -9,13 +9,12 @@
 <body>
   <main class="app">
     <nav class="page-tabs" aria-label="页面切换">
-      <button id="toMemoryPage" class="tab-btn" type="button">翻翻乐</button>
-      <button id="toBuilderPage" class="tab-btn active" type="button">bingo</button>
+      <button id="toMemoryPage" class="tab-btn active" type="button">翻翻乐</button>
+      <button id="toBuilderPage" class="tab-btn" type="button">bingo</button>
     </nav>
 
     <div class="global-controls">
       <label class="toggle-label"><input id="toggleNames" type="checkbox" /> 显示物品名称</label>
-      <button id="preloadBtn" type="button" class="small">预加载图片（所有颜色）</button>
       <button id="clearCacheBtn" type="button" class="small secondary">清空图片缓存</button>
     </div>
 
@@ -24,7 +23,7 @@
       <div id="generationTimeRelative" class="generation-badge__relative"></div>
     </aside>
 
-    <section id="builderPage" class="page-panel active" aria-live="polite">
+    <section id="builderPage" class="page-panel" aria-live="polite" hidden>
     <header class="hero">
       <h1>bingo</h1>
       <p>自定义 bingo 大小并从颜色文件夹中随机抽取图片，默认仅选大红。</p>
@@ -71,7 +70,7 @@
     <section id="grid" class="grid" aria-live="polite"></section>
     </section>
 
-    <section id="memoryPage" class="page-panel" aria-live="polite" hidden>
+    <section id="memoryPage" class="page-panel active" aria-live="polite">
       <header class="hero">
         <h1>翻翻乐</h1>
         <p>每张牌先遮挡，点击翻开，两两配对；不匹配会在 1 秒后翻回。</p>
@@ -97,7 +96,7 @@
     <div id="loadingOverlay" class="loading-overlay" hidden>
       <div class="loading-box">
         <div class="spinner" aria-hidden="true"></div>
-        <div class="loading-text">图片加载中，请稍候…</div>
+        <div id="loadingText" class="loading-text">图片加载中，请稍候…</div>
         <button id="loadingCloseBtn" type="button" class="secondary">跳过等待</button>
       </div>
     </div>

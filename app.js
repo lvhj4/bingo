@@ -42,6 +42,7 @@ let memoryFlipCount = 0;
 let memoryLoading = false;
 const loadingOverlay = document.getElementById('loadingOverlay');
 const loadingCloseBtn = document.getElementById('loadingCloseBtn');
+const loadingTextEl = document.getElementById('loadingText');
 const LOADING_TIMEOUT_MS = 10000; // 超时（毫秒），到时自动关闭遮罩
 let loadingTimeout = null;
 let lastGeneratedAt = null;
@@ -372,6 +373,8 @@ async function findImagePathForNameAndColors(name, colors) {
   for (const path of uniq) {
     // 尝试加载图片，短超时
     // eslint-disable-next-line no-await-in-loop
+    // ensure absolute path
+    const tryPath = path.startsWith('/') ? path : `/${path}`;
     const ok = await new Promise((resolve) => {
       const img = new Image();
       let done = false;
@@ -380,9 +383,9 @@ async function findImagePathForNameAndColors(name, colors) {
       img.onload = onOk;
       img.onerror = onErr;
       setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1200);
-      img.src = path;
+      img.src = tryPath;
     });
-    if (ok) return path;
+    if (ok) return path.startsWith('/') ? path : `/${path}`;
   }
 
   return null;
@@ -400,7 +403,8 @@ async function preloadAllColors() {
   }
 
   showLoadingOverlay();
-  setStatus('开始预加载所有颜色图片...');
+  if (loadingTextEl) loadingTextEl.textContent = '开始预加载所有颜色图片...';
+  setStatus('已开始后台预加载（进度显示在加载遮罩中）。');
 
   const colors = BINGO_COLORS;
   const total = colors.length * imageNames.length;
@@ -425,15 +429,15 @@ async function preloadAllColors() {
   async function fetchCandidates(candidates) {
     for (const p of candidates) {
       try {
-        const resp = await fetch(p, { mode: 'no-cors' });
-        // 即便是 no-cors，浏览器也会 attempt fetch so SW can see it; success unknown
-        if (resp) break;
+        // 尝试普通 fetch（允许跨域由浏览器控制），这里不等待响应体
+        fetch(p).catch(() => {});
+        break;
       } catch (e) {
         // ignore
       }
     }
     doneCount += 1;
-    setStatus(`预加载进度：${doneCount}/${total}`);
+    if (loadingTextEl) loadingTextEl.textContent = `预加载进度：${doneCount}/${total}`;
   }
 
   // 并发执行
@@ -469,6 +473,9 @@ async function clearImageCache() {
 }
 
 async function buildGrid() {
+  try {
+    setStatus('正在生成 bingo，请稍候...');
+  } catch (e) {}
   const rows = Number(rowsInput.value);
   const cols = Number(colsInput.value);
 
@@ -488,6 +495,7 @@ async function buildGrid() {
   if (!selectedColors.length) selectedColors = ['大红'];
 
   showLoadingOverlay();
+  if (loadingTextEl) loadingTextEl.textContent = '正在为 bingo 查找图片...';
   const deck = [];
   const used = new Set();
   // 为了性能，从随机化的 imageNames 中尝试填满 deck
@@ -505,7 +513,14 @@ async function buildGrid() {
     // 若找不到则跳过，避免用错颜色
     // 允许较短超时时间
     // eslint-disable-next-line no-await-in-loop
-    const path = await findImagePathForNameAndColors(candidate, selectedColors);
+    let path = null;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      path = await findImagePathForNameAndColors(candidate, selectedColors);
+    } catch (e) {
+      console.warn('probe path failed', candidate, e);
+      path = null;
+    }
     if (path) {
       deck.push({ rawName: candidate, src: path });
       used.add(candidate);
@@ -527,7 +542,12 @@ async function buildGrid() {
   }
 
   hideLoadingOverlay();
-  buildBuilderGridWithDeck(rows, cols, deck);
+  try {
+    buildBuilderGridWithDeck(rows, cols, deck);
+  } catch (e) {
+    console.error('buildBuilderGridWithDeck error', e);
+    setStatus('生成 bingo 时发生错误，请查看控制台。', true);
+  }
 }
 
 function applyHighlight() {
@@ -883,6 +903,8 @@ clearHighlightBtn.addEventListener("click", clearHighlight);
 toBuilderPageBtn.addEventListener("click", () => showPage("builder"));
 toMemoryPageBtn.addEventListener("click", () => showPage("memory"));
 buildMemoryGridBtn.addEventListener("click", buildMemoryGrid);
+if (preloadBtn) preloadBtn.addEventListener('click', () => { preloadBtn.disabled = true; preloadAllColors().finally(() => { preloadBtn.disabled = false; }); });
+if (clearCacheBtn) clearCacheBtn.addEventListener('click', () => { clearCacheBtn.disabled = true; clearImageCache().finally(() => { clearCacheBtn.disabled = false; }); });
 
 nameInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {

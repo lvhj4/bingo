@@ -16,28 +16,30 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
-  // Only handle image requests (and paths under 图片/ or color folders)
   try {
     const url = new URL(req.url);
-    const pathname = url.pathname;
-    const isImage = req.destination === 'image' || /\.(png|jpg|jpeg|gif|webp|svg)$/.test(pathname);
-    const isColorFolder = /\/(?:图片|大红|金|紫|蓝|绿|白)\//.test(pathname) || /\/(?:大红|金|紫|蓝|绿|白)\//.test(pathname.replace(/^\//, ''));
-    if (!isImage && !isColorFolder) return;
+    const pathname = url.pathname || url.href;
+    const isImageExt = /\.(png|jpg|jpeg|gif|webp|svg)$/.test(pathname);
+    const isColorPath = /\/(?:图片|大红|金|紫|蓝|绿|白)\//.test(pathname) || /\/(?:大红|金|紫|蓝|绿|白)\//.test(pathname.replace(/^\//, ''));
+    if (!isImageExt && !isColorPath) return; // only handle likely image/color requests
 
     event.respondWith((async () => {
       const cache = await caches.open(CACHE_NAME);
+      // Try cache first
       const cached = await cache.match(req);
 
-      // Start network fetch in background to update cache (stale-while-revalidate)
-      const networkPromise = fetch(req).then((networkResp) => {
-        if (networkResp && networkResp.ok) {
-          cache.put(req, networkResp.clone()).catch(() => {});
+      // Always try network in background to update cache
+      fetch(req).then((networkResp) => {
+        try {
+          if (networkResp && networkResp.ok) {
+            cache.put(req, networkResp.clone()).catch(() => {});
+          }
+        } catch (e) {
+          // ignore cache put errors for opaque responses
         }
-        return networkResp;
-      }).catch(() => null);
+      }).catch(() => {});
 
-      // Prefer cached response if available, otherwise wait for network
-      return cached || networkPromise;
+      return cached || fetch(req);
     })());
   } catch (e) {
     // ignore
