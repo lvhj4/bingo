@@ -9,12 +9,14 @@
 <body>
   <main class="app">
     <nav class="page-tabs" aria-label="页面切换">
-      <button id="toBuilderPage" class="tab-btn active" type="button">宫格生成页</button>
-      <button id="toMemoryPage" class="tab-btn" type="button">翻牌配对页</button>
+      <button id="toMemoryPage" class="tab-btn" type="button">翻翻乐</button>
+      <button id="toBuilderPage" class="tab-btn active" type="button">bingo</button>
     </nav>
 
     <div class="global-controls">
       <label class="toggle-label"><input id="toggleNames" type="checkbox" /> 显示物品名称</label>
+      <button id="preloadBtn" type="button" class="small">预加载图片（所有颜色）</button>
+      <button id="clearCacheBtn" type="button" class="small secondary">清空图片缓存</button>
     </div>
 
     <aside id="generationBadge" class="generation-badge" hidden>
@@ -24,19 +26,30 @@
 
     <section id="builderPage" class="page-panel active" aria-live="polite">
     <header class="hero">
-      <h1>图片宫格生成器</h1>
-      <p>自定义宫格大小，按文件名高亮匹配，可手动取消选中。手机端也可直接触控操作。</p>
+      <h1>bingo</h1>
+      <p>自定义 bingo 大小并从颜色文件夹中随机抽取图片，默认仅选大红。</p>
     </header>
 
     <section class="panel">
-      <div class="row">
+        <div class="row">
         <label for="rows">行数</label>
         <input id="rows" type="number" min="1" value="4" />
 
         <label for="cols">列数</label>
         <input id="cols" type="number" min="1" value="6" />
 
-        <button id="buildGridBtn" type="button">生成宫格</button>
+        <button id="buildGridBtn" type="button">生成 bingo</button>
+      </div>
+
+      <div class="row">
+        <fieldset style="border:0;padding:0;margin:0">
+          <legend>颜色选择（从对应文件夹随机抽取，默认仅大红）</legend>
+          <label><input type="checkbox" class="color-checkbox" value="大红" checked /> 大红</label>
+          <label><input type="checkbox" class="color-checkbox" value="金" /> 金</label>
+          <label><input type="checkbox" class="color-checkbox" value="紫" /> 紫</label>
+          <label><input type="checkbox" class="color-checkbox" value="蓝" /> 蓝</label>
+          <label><input type="checkbox" class="color-checkbox" value="白" /> 白</label>
+        </fieldset>
       </div>
 
       <div class="row search-row">
@@ -60,7 +73,7 @@
 
     <section id="memoryPage" class="page-panel" aria-live="polite" hidden>
       <header class="hero">
-        <h1>翻牌配对游戏</h1>
+        <h1>翻翻乐</h1>
         <p>每张牌先遮挡，点击翻开，两两配对；不匹配会在 1 秒后翻回。</p>
       </header>
 
