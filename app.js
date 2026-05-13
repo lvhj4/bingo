@@ -409,7 +409,8 @@ async function preloadAllColors() {
   const total = colors.length * imageNames.length;
   let doneCount = 0;
 
-  const concurrency = 12;
+  // 降低并发以避免触发托管服务的流量限制（GitHub Pages 对短时并发请求敏感）
+  const concurrency = 3;
   const tasks = [];
   for (const color of colors) {
     for (const name of imageNames) {
@@ -428,8 +429,17 @@ async function preloadAllColors() {
   async function fetchCandidates(candidates) {
     for (const p of candidates) {
       try {
-        // 尝试普通 fetch（允许跨域由浏览器控制），这里不等待响应体
-        fetch(p).catch(() => {});
+        // 使用 fetch 并处理 429（Too Many Requests）响应：若遇到 429，等待后重试一次并继续
+        try {
+          const resp = await fetch(p, { mode: 'cors' });
+          if (resp && resp.status === 429) {
+            // 轻退避后再试一次
+            await new Promise(r => setTimeout(r, 800));
+            try { await fetch(p, { mode: 'cors' }).catch(() => {}); } catch (_) {}
+          }
+        } catch (e) {
+          // fetch 出错（网络/超时），忽略并继续下一候选
+        }
         break;
       } catch (e) {
         // ignore
@@ -850,8 +860,8 @@ async function init() {
     setStatus(`图片清单加载成功：${imageNames.length} 张。`);
     // 不在初始化时自动生成翻牌或 bingo，等待用户手动点击生成
     updateFlipCountText();
-    // 默认启动：预加载所有颜色图片并缓存（在 Service Worker 就绪后运行）
-    try { preloadAllColors().catch(() => {}); } catch (e) { /* ignore */ }
+    // 默认不自动预加载全部图片（避免短时间内大量请求导致 GitHub Pages 被限流/返回 429）
+    // 若想启用后台预载，请手动点击页面上的“预加载”按钮。
     // 名称显示开关，默认关闭（隐藏名称）
     try {
       if (toggleNamesCheckbox) {
