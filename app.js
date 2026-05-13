@@ -28,6 +28,7 @@ const preloadBtn = document.getElementById('preloadBtn');
 const clearCacheBtn = document.getElementById('clearCacheBtn');
 
 const IMAGE_DIR = "图片";
+const colorImageMap = window.COLOR_IMAGE_MAP || {};
 let imageNames = [];
 let currentRows = Number(rowsInput.value) || 0;
 let currentCols = Number(colsInput.value) || 0;
@@ -153,6 +154,21 @@ function toImagePath(fileName) {
   } catch (e) {
     return `${IMAGE_DIR}/${encodeURIComponent(fileName)}`;
   }
+}
+
+function toColorImagePath(color, fileName) {
+  return `${encodeURIComponent(color)}/${encodeURIComponent(fileName)}`;
+}
+
+function getColorEntries(colors) {
+  const entries = [];
+  colors.forEach((color) => {
+    const files = Array.isArray(colorImageMap[color]) ? colorImageMap[color] : [];
+    files.forEach((fileName) => {
+      entries.push({ rawName: fileName, src: toColorImagePath(color, fileName), color });
+    });
+  });
+  return entries;
 }
 
 function normalizeName(name) {
@@ -346,53 +362,12 @@ function buildBuilderGridWithDeck(rows, cols, deck) {
   markGeneratedNow();
 }
 
-async function findImagePathForNameAndColors(name, colors) {
-  // 返回第一个能加载成功的路径（尝试颜色文件夹），失败返回 null
-  if (!name) return null;
-  const candidates = [];
-  const encodedName = encodeURIComponent(name);
-  for (const color of colors) {
-    // 尝试多种路径形式：raw color/raw name, raw color/encoded name,
-    // encoded color/raw name, encoded color/encoded name
-    const rawColor = color;
-    const encColor = encodeURIComponent(color);
-    // 先尝试根目录下的颜色文件夹（例如 大红/文件.png），再尝试 图片/颜色/文件.png
-    candidates.push(`${rawColor}/${name}`);
-    candidates.push(`${rawColor}/${encodedName}`);
-    candidates.push(`${encColor}/${name}`);
-    candidates.push(`${encColor}/${encodedName}`);
-    candidates.push(`${IMAGE_DIR}/${rawColor}/${name}`);
-    candidates.push(`${IMAGE_DIR}/${rawColor}/${encodedName}`);
-    candidates.push(`${IMAGE_DIR}/${encColor}/${name}`);
-    candidates.push(`${IMAGE_DIR}/${encColor}/${encodedName}`);
-  }
-
-  // 去重
-  const uniq = Array.from(new Set(candidates));
-
-  for (const path of uniq) {
-    // 尝试加载图片，短超时（使用相对路径以兼容 GitHub Pages 子路径）
-    // eslint-disable-next-line no-await-in-loop
-    const tryPath = path; // 保持相对路径，不强制前导斜杠
-    const ok = await new Promise((resolve) => {
-      const img = new Image();
-      let done = false;
-      const onOk = () => { if (!done) { done = true; resolve(true); } };
-      const onErr = () => { if (!done) { done = true; resolve(false); } };
-      img.onload = onOk;
-      img.onerror = onErr;
-      setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1200);
-      img.src = tryPath;
-    });
-    if (ok) return path;
-  }
-
-  return null;
-}
-
 async function preloadAllColors() {
-  if (!Array.isArray(imageNames) || !imageNames.length) {
-    setStatus('图片清单为空，无法预加载。', true);
+  const allColors = BINGO_COLORS.filter((color) => Array.isArray(colorImageMap[color]) && colorImageMap[color].length);
+  const preloadEntries = getColorEntries(allColors);
+
+  if (!preloadEntries.length) {
+    setStatus('颜色图片清单为空，无法预加载。', true);
     return;
   }
 
@@ -405,54 +380,30 @@ async function preloadAllColors() {
   if (loadingTextEl) loadingTextEl.textContent = '开始预加载所有颜色图片...';
   setStatus('已开始后台预加载（进度显示在加载遮罩中）。');
 
-  const colors = BINGO_COLORS;
-  const total = colors.length * imageNames.length;
+  const total = preloadEntries.length;
   let doneCount = 0;
 
   // 降低并发以避免触发托管服务的流量限制（GitHub Pages 对短时并发请求敏感）
-  const concurrency = 3;
-  const tasks = [];
-  for (const color of colors) {
-    for (const name of imageNames) {
-      const enc = encodeURIComponent(name);
-      const cand = [
-        `${color}/${name}`,
-        `${color}/${enc}`,
-        `${enc}/${name}`,
-        `${IMAGE_DIR}/${color}/${name}`,
-        `${IMAGE_DIR}/${color}/${enc}`,
-      ];
-      tasks.push(cand);
-    }
-  }
+  const concurrency = 2;
+  const tasks = preloadEntries.map((entry) => entry.src);
 
-  async function fetchCandidates(candidates) {
-    for (const p of candidates) {
-      try {
-        // 使用 fetch 并处理 429（Too Many Requests）响应：若遇到 429，等待后重试一次并继续
-        try {
-          const resp = await fetch(p, { mode: 'cors' });
-          if (resp && resp.status === 429) {
-            // 轻退避后再试一次
-            await new Promise(r => setTimeout(r, 800));
-            try { await fetch(p, { mode: 'cors' }).catch(() => {}); } catch (_) {}
-          }
-        } catch (e) {
-          // fetch 出错（网络/超时），忽略并继续下一候选
-        }
-        break;
-      } catch (e) {
-        // ignore
+  async function preloadOne(path) {
+    try {
+      const resp = await fetch(path, { mode: 'cors' });
+      if (resp && resp.status === 429) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        try { await fetch(path, { mode: 'cors' }); } catch (e) { /* ignore */ }
       }
+    } catch (e) {
+      // ignore
     }
     doneCount += 1;
     if (loadingTextEl) loadingTextEl.textContent = `预加载进度：${doneCount}/${total}`;
   }
 
-  // 并发执行
   while (tasks.length) {
     const batch = tasks.splice(0, concurrency);
-    await Promise.all(batch.map(c => fetchCandidates(c)));
+    await Promise.all(batch.map((path) => preloadOne(path)));
   }
 
   hideLoadingOverlay();
@@ -503,47 +454,30 @@ async function buildGrid() {
   let selectedColors = colorCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
   if (!selectedColors.length) selectedColors = ['大红'];
 
+  const availableEntries = shuffledCopy(getColorEntries(selectedColors));
+  if (!availableEntries.length) {
+    setStatus('所选颜色文件夹中没有可用图片，请检查清单或选择其他颜色。', true);
+    return;
+  }
+
   showLoadingOverlay();
-  if (loadingTextEl) loadingTextEl.textContent = '正在为 bingo 查找图片...';
+  if (loadingTextEl) loadingTextEl.textContent = '正在为 bingo 组装图片...';
   const deck = [];
   const used = new Set();
-  // 为了性能，从随机化的 imageNames 中尝试填满 deck
-  const pool = shuffledCopy(imageNames);
-  let attempts = 0;
-  while (deck.length < total && attempts < imageNames.length * 3) {
-    attempts += 1;
-    if (!pool.length) {
-      pool.push(...shuffledCopy(imageNames));
-    }
-    const candidate = pool.pop();
-    if (used.has(candidate)) continue;
-    // 尝试在所选颜色文件夹中寻找图片
-    // findImagePathForNameAndColors 会返回第一个存在的颜色路径
-    // 若找不到则跳过，避免用错颜色
-    // 允许较短超时时间
-    // eslint-disable-next-line no-await-in-loop
-    let path = null;
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      path = await findImagePathForNameAndColors(candidate, selectedColors);
-    } catch (e) {
-      console.warn('probe path failed', candidate, e);
-      path = null;
-    }
-    if (path) {
-      deck.push({ rawName: candidate, src: path });
-      used.add(candidate);
-    }
+  while (availableEntries.length && deck.length < total) {
+    const candidate = availableEntries.pop();
+    if (used.has(candidate.src)) continue;
+    deck.push(candidate);
+    used.add(candidate.src);
   }
 
   // 当找到的可用图片不足时，允许重复使用已找到的图片以填满 bingo
   if (deck.length < total) {
     if (deck.length === 0) {
       hideLoadingOverlay();
-      setStatus('所选颜色文件夹中没有可用图片，请检查文件夹或选择其他颜色。', true);
+      setStatus('所选颜色文件夹中没有可用图片，请检查清单或选择其他颜色。', true);
       return;
     }
-    // 允许重复：从已找到的候选中随机采样以补齐
     while (deck.length < total) {
       const pick = deck[Math.floor(Math.random() * deck.length)];
       deck.push({ rawName: pick.rawName, src: pick.src });
@@ -857,7 +791,8 @@ async function init() {
       return;
     }
 
-    setStatus(`图片清单加载成功：${imageNames.length} 张。`);
+    const colorCount = Object.values(colorImageMap).reduce((sum, files) => sum + (Array.isArray(files) ? files.length : 0), 0);
+    setStatus(`图片清单加载成功：${imageNames.length} 张；颜色清单：${colorCount} 张。`);
     // 不在初始化时自动生成翻牌或 bingo，等待用户手动点击生成
     updateFlipCountText();
     // 默认不自动预加载全部图片（避免短时间内大量请求导致 GitHub Pages 被限流/返回 429）
@@ -924,7 +859,7 @@ nameInput.addEventListener("keydown", (event) => {
 init();
 // Register service worker for image caching (stale-while-revalidate)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js')
+  navigator.serviceWorker.register('./sw.js?v=20260513-2')
     .then((reg) => {
       console.log('ServiceWorker registered', reg);
       setStatus('已启用图片离线缓存（Service Worker）。');
