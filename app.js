@@ -371,10 +371,9 @@ async function findImagePathForNameAndColors(name, colors) {
   const uniq = Array.from(new Set(candidates));
 
   for (const path of uniq) {
-    // 尝试加载图片，短超时
+    // 尝试加载图片，短超时（使用相对路径以兼容 GitHub Pages 子路径）
     // eslint-disable-next-line no-await-in-loop
-    // ensure absolute path
-    const tryPath = path.startsWith('/') ? path : `/${path}`;
+    const tryPath = path; // 保持相对路径，不强制前导斜杠
     const ok = await new Promise((resolve) => {
       const img = new Image();
       let done = false;
@@ -385,7 +384,7 @@ async function findImagePathForNameAndColors(name, colors) {
       setTimeout(() => { if (!done) { done = true; resolve(false); } }, 1200);
       img.src = tryPath;
     });
-    if (ok) return path.startsWith('/') ? path : `/${path}`;
+    if (ok) return path;
   }
 
   return null;
