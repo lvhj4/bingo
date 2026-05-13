@@ -286,6 +286,12 @@ function showSuccessModal() {
     return;
   }
 
+  const content = successModal.querySelector('.success-modal__content');
+  const targetLen = getTargetLineLength();
+  if (content) {
+    content.textContent = `恭喜您，已达成 ${targetLen} 格连线`; 
+  }
+
   successModal.classList.add("show");
   successModal.setAttribute("aria-hidden", "false");
 
@@ -296,7 +302,7 @@ function showSuccessModal() {
   modalTimer = setTimeout(() => {
     successModal.classList.remove("show");
     successModal.setAttribute("aria-hidden", "true");
-  }, 1400);
+  }, 2400);
 }
 
 function updateLineStateAndNotify() {
@@ -859,7 +865,7 @@ nameInput.addEventListener("keydown", (event) => {
 init();
 // Register service worker for image caching (stale-while-revalidate)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js?v=20260513-2')
+  navigator.serviceWorker.register('./sw.js?v=20260513-4')
     .then((reg) => {
       console.log('ServiceWorker registered', reg);
       setStatus('已启用图片离线缓存（Service Worker）。');
