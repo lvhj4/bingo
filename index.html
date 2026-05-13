@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>图片宫格生成器</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <nav class="page-tabs" aria-label="页面切换">
+      <button id="toMemoryPage" class="tab-btn active" type="button">翻翻乐</button>
+      <button id="toBuilderPage" class="tab-btn" type="button">bingo</button>
+    </nav>
+
+    <div class="global-controls">
+      <label class="toggle-label"><input id="toggleNames" type="checkbox" /> 显示物品名称</label>
+      <button id="clearCacheBtn" type="button" class="small secondary">清空图片缓存</button>
+    </div>
+
+    <aside id="generationBadge" class="generation-badge" hidden>
+      <div id="generationTimeExact" class="generation-badge__exact"></div>
+      <div id="generationTimeRelative" class="generation-badge__relative"></div>
+    </aside>
+
+    <section id="builderPage" class="page-panel" aria-live="polite" hidden>
+    <header class="hero">
+      <h1>bingo</h1>
+      <p>自定义 bingo 大小并从颜色文件夹中随机抽取图片，默认仅选大红。</p>
+    </header>
+
+    <section class="panel">
+        <div class="row">
+        <label for="rows">行数</label>
+        <input id="rows" type="number" min="1" value="4" />
+
+        <label for="cols">列数</label>
+        <input id="cols" type="number" min="1" value="6" />
+
+        <button id="buildGridBtn" type="button">生成 bingo</button>
+      </div>
+
+      <div class="row">
+        <fieldset style="border:0;padding:0;margin:0">
+          <legend>颜色选择（从对应文件夹随机抽取，默认仅大红）</legend>
+          <label><input type="checkbox" class="color-checkbox" value="大红" checked /> 大红</label>
+          <label><input type="checkbox" class="color-checkbox" value="金" /> 金</label>
+          <label><input type="checkbox" class="color-checkbox" value="紫" /> 紫</label>
+          <label><input type="checkbox" class="color-checkbox" value="蓝" /> 蓝</label>
+          <label><input type="checkbox" class="color-checkbox" value="白" /> 白</label>
+        </fieldset>
+      </div>
+
+      <div class="row search-row">
+        <label for="nameInput">名称匹配</label>
+        <input
+          id="nameInput"
+          type="text"
+          placeholder="输入名称，支持逗号分隔多个（例：CPU, 医用酒精）"
+        />
+        <label for="linkLengthInput">连线长度</label>
+        <input id="linkLengthInput" type="number" min="2" value="3" />
+        <button id="highlightBtn" type="button">高亮匹配</button>
+        <button id="clearHighlightBtn" type="button" class="secondary">清空高亮</button>
+      </div>
+
+      <p id="status" class="status">正在加载图片清单...</p>
+    </section>
+
+    <section id="grid" class="grid" aria-live="polite"></section>
+    </section>
+
+    <section id="memoryPage" class="page-panel active" aria-live="polite">
+      <header class="hero">
+        <h1>翻翻乐</h1>
+        <p>每张牌先遮挡，点击翻开，两两配对；不匹配会在 1 秒后翻回。</p>
+      </header>
+
+      <section class="panel">
+        <div class="row">
+          <label for="memoryRows">行数</label>
+          <input id="memoryRows" type="number" min="1" value="4" />
+
+          <label for="memoryCols">列数</label>
+          <input id="memoryCols" type="number" min="1" value="4" />
+
+          <button id="buildMemoryGridBtn" type="button">生成翻牌宫格</button>
+        </div>
+
+        <p id="memoryStatus" class="status">请先生成翻牌宫格。</p>
+        <p class="status memory-meta">已翻牌次数：<span id="flipCount">0</span></p>
+      </section>
+
+      <section id="memoryGrid" class="grid memory-grid" aria-live="polite"></section>
+    </section>
+    <div id="loadingOverlay" class="loading-overlay" hidden>
+      <div class="loading-box">
+        <div class="spinner" aria-hidden="true"></div>
+        <div id="loadingText" class="loading-text">图片加载中，请稍候…</div>
+        <button id="loadingCloseBtn" type="button" class="secondary">跳过等待</button>
+      </div>
+    </div>
+  </main>
+
+  <div id="successModal" class="success-modal" aria-live="assertive" aria-hidden="true">
+    <div class="success-modal__content">恭喜您，连线成功</div>
+  </div>
+
+  <template id="cardTemplate">
+    <article class="cell" data-name="">
+      <div class="thumb-wrap">
+        <img class="thumb" src="" alt="" loading="lazy" />
+      </div>
+      <p class="name"></p>
+    </article>
+  </template>
+
+  <script src="images-list.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
